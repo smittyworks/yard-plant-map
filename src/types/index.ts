@@ -1,5 +1,42 @@
 export type PlantType = 'tree' | 'shrub' | 'perennial' | 'annual' | 'vine' | 'grass' | 'bulb' | 'other'
 
+export type FeatureType = 'patio' | 'pool' | 'deck' | 'driveway' | 'shed' | 'garden_bed' | 'walkway' | 'other'
+
+export interface YardFeature {
+  id: string
+  yard_id: string
+  label: string
+  feature_type: FeatureType
+  grid_x: number
+  grid_y: number
+  grid_width: number
+  grid_height: number
+  color: string
+  created_at: string
+}
+
+export const FEATURE_COLORS: Record<FeatureType, string> = {
+  patio:      '#c8b89a',
+  pool:       '#7ec8e3',
+  deck:       '#c4965a',
+  driveway:   '#a8a8a8',
+  shed:       '#8b7355',
+  garden_bed: '#7a5c2e',
+  walkway:    '#b8ad96',
+  other:      '#b0b0b0',
+}
+
+export const FEATURE_ICONS: Record<FeatureType, string> = {
+  patio:      '🪨',
+  pool:       '🏊',
+  deck:       '🪵',
+  driveway:   '🚗',
+  shed:       '🏚',
+  garden_bed: '🌱',
+  walkway:    '👣',
+  other:      '⬜',
+}
+
 export type CareEventType = 'pruning' | 'fertilizing' | 'watering' | 'treatment' | 'transplanting' | 'other'
 
 export interface User {

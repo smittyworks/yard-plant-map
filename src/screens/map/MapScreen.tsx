@@ -12,9 +12,10 @@ import { PanGestureHandler, PinchGestureHandler, State } from 'react-native-gest
 import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { supabase } from '../../lib/supabase'
-import { Plant, PlantIdentificationResult, PlantType, Yard } from '../../types'
+import { Plant, PlantIdentificationResult, PlantType, Yard, YardFeature, FeatureType, FEATURE_COLORS } from '../../types'
 import { FREE_TIER_PLANT_LIMIT } from '../../constants'
 import AddPlantModal from '../plants/AddPlantModal'
+import AddFeatureModal from './AddFeatureModal'
 import IdentifyPlantScreen from '../plants/IdentifyPlantScreen'
 import PaywallScreen from '../paywall/PaywallScreen'
 import { usePremium } from '../../hooks/usePremium'
@@ -51,12 +52,17 @@ export default function MapScreen() {
   const [yard, setYard] = useState<Yard | null>(null)
   const [plants, setPlants] = useState<Plant[]>([])
   const [loading, setLoading] = useState(true)
+  const [features, setFeatures] = useState<YardFeature[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showAddFeature, setShowAddFeature] = useState(false)
   const [showIdentify, setShowIdentify] = useState(false)
   const [showPaywall, setShowPaywall] = useState(false)
   const [fabExpanded, setFabExpanded] = useState(false)
   const [prefill, setPrefill] = useState<{ commonName?: string; botanicalName?: string } | undefined>()
   const [placingPlantId, setPlacingPlantId] = useState<string | null>(null)
+  // Feature placement: two-tap mode (corner1 → corner2)
+  const [pendingFeature, setPendingFeature] = useState<{ type: FeatureType; label: string } | null>(null)
+  const [featureCorner1, setFeatureCorner1] = useState<{ x: number; y: number } | null>(null)
 
   const { atLimit, isPremium, plantCount, refresh: refreshPremium } = usePremium(yard?.id ?? null)
 
@@ -82,13 +88,17 @@ export default function MapScreen() {
   const touchStartRef = useRef({ screenX: 0, screenY: 0 })
 
   // Keep refs in sync for use inside gesture callbacks
-  const placingPlantIdRef = useRef<string | null>(null)
-  const plantsRef         = useRef<Plant[]>([])
-  const yardRef           = useRef<Yard | null>(null)
+  const placingPlantIdRef  = useRef<string | null>(null)
+  const plantsRef          = useRef<Plant[]>([])
+  const yardRef            = useRef<Yard | null>(null)
+  const pendingFeatureRef  = useRef<{ type: FeatureType; label: string } | null>(null)
+  const featureCorner1Ref  = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => { placingPlantIdRef.current = placingPlantId }, [placingPlantId])
   useEffect(() => { plantsRef.current = plants }, [plants])
   useEffect(() => { yardRef.current = yard }, [yard])
+  useEffect(() => { pendingFeatureRef.current = pendingFeature }, [pendingFeature])
+  useEffect(() => { featureCorner1Ref.current = featureCorner1 }, [featureCorner1])
 
   function onCanvasAreaLayout() {
     canvasAreaRef.current?.measureInWindow((x, y) => {
@@ -157,16 +167,37 @@ export default function MapScreen() {
     const currentYard = yardRef.current
     if (!currentYard) return
 
+    const gx = Math.floor(canvasX / CELL_PX)
+    const gy = Math.floor(canvasY / CELL_PX)
+    const inBounds = gx >= 0 && gx < currentYard.grid_width && gy >= 0 && gy < currentYard.grid_height
+
+    // Plant placement mode
     const pId = placingPlantIdRef.current
     if (pId) {
-      const gx = Math.floor(canvasX / CELL_PX)
-      const gy = Math.floor(canvasY / CELL_PX)
-      if (gx >= 0 && gx < currentYard.grid_width && gy >= 0 && gy < currentYard.grid_height) {
-        placePlant(pId, gx, gy)
+      if (inBounds) placePlant(pId, gx, gy)
+      return
+    }
+
+    // Feature placement mode — two taps
+    if (pendingFeatureRef.current) {
+      if (!inBounds) return
+      if (!featureCorner1Ref.current) {
+        // First tap: set anchor corner
+        setFeatureCorner1({ x: gx, y: gy })
+        featureCorner1Ref.current = { x: gx, y: gy }
+      } else {
+        // Second tap: save feature
+        const c1 = featureCorner1Ref.current
+        const x = Math.min(c1.x, gx)
+        const y = Math.min(c1.y, gy)
+        const w = Math.abs(gx - c1.x) + 1
+        const h = Math.abs(gy - c1.y) + 1
+        saveFeature(pendingFeatureRef.current, x, y, w, h)
       }
       return
     }
 
+    // Normal mode: tap a plant marker to view detail
     const tapped = plantsRef.current.find(p => {
       if (!p.placed || p.grid_x == null || p.grid_y == null) return false
       const mx = p.grid_x * CELL_PX + CELL_PX / 2
@@ -187,6 +218,32 @@ export default function MapScreen() {
     if (error) { Alert.alert('Error', error.message); return }
     setPlants(prev => prev.map(p => p.id === plantId ? updated : p))
     setPlacingPlantId(null)
+  }
+
+  async function saveFeature(
+    pending: { type: FeatureType; label: string },
+    x: number, y: number, w: number, h: number,
+  ) {
+    const currentYard = yardRef.current
+    if (!currentYard) return
+    const { data, error } = await supabase
+      .from('yard_features')
+      .insert({
+        yard_id:      currentYard.id,
+        label:        pending.label,
+        feature_type: pending.type,
+        grid_x:       x,
+        grid_y:       y,
+        grid_width:   w,
+        grid_height:  h,
+        color:        FEATURE_COLORS[pending.type],
+      })
+      .select()
+      .single()
+    if (error) { Alert.alert('Error', error.message) }
+    else setFeatures(prev => [...prev, data])
+    setPendingFeature(null)
+    setFeatureCorner1(null)
   }
 
   useEffect(() => { loadData() }, [])
@@ -211,9 +268,12 @@ export default function MapScreen() {
       if (!yardData) return
 
       setYard(yardData)
-      const { data: plantsData } = await supabase
-        .from('plants').select('*').eq('yard_id', yardData.id).order('created_at')
+      const [{ data: plantsData }, { data: featuresData }] = await Promise.all([
+        supabase.from('plants').select('*').eq('yard_id', yardData.id).order('created_at'),
+        supabase.from('yard_features').select('*').eq('yard_id', yardData.id),
+      ])
       setPlants(plantsData ?? [])
+      setFeatures(featuresData ?? [])
     } finally {
       setLoading(false)
     }
@@ -226,8 +286,9 @@ export default function MapScreen() {
     if (placeNow) setPlacingPlantId(plant.id)
   }
 
-  function handleFabAction(action: 'identify' | 'manual') {
+  function handleFabAction(action: 'identify' | 'manual' | 'feature') {
     setFabExpanded(false)
+    if (action === 'feature') { setShowAddFeature(true); return }
     if (atLimit) { setShowPaywall(true); return }
     if (action === 'identify') setShowIdentify(true)
     else { setPrefill(undefined); setShowAddModal(true) }
@@ -270,6 +331,15 @@ export default function MapScreen() {
         <View style={styles.placingBanner}>
           <Text style={styles.placingText}>Tap a cell to place your plant</Text>
           <Pressable onPress={() => setPlacingPlantId(null)} hitSlop={12}>
+            <Text style={styles.cancelText}>Cancel</Text>
+          </Pressable>
+        </View>
+      ) : pendingFeature ? (
+        <View style={styles.placingBanner}>
+          <Text style={styles.placingText}>
+            {featureCorner1 ? 'Tap bottom-right corner' : 'Tap top-left corner'}
+          </Text>
+          <Pressable onPress={() => { setPendingFeature(null); setFeatureCorner1(null) }} hitSlop={12}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
         </View>
@@ -324,6 +394,44 @@ export default function MapScreen() {
             {/* Yard border */}
             <Rect x={1} y={1} width={canvasWidth - 2} height={canvasHeight - 2}
               fill="none" stroke="#4a7c40" strokeWidth={2} />
+
+            {/* Yard features */}
+            {features.map(f => (
+              <React.Fragment key={f.id}>
+                <Rect
+                  x={f.grid_x * CELL_PX + 2}
+                  y={f.grid_y * CELL_PX + 2}
+                  width={f.grid_width * CELL_PX - 4}
+                  height={f.grid_height * CELL_PX - 4}
+                  fill={f.color}
+                  fillOpacity={0.7}
+                  rx={6}
+                />
+                <SvgText
+                  x={f.grid_x * CELL_PX + (f.grid_width * CELL_PX) / 2}
+                  y={f.grid_y * CELL_PX + (f.grid_height * CELL_PX) / 2 + 5}
+                  fontSize={Math.min(14, f.grid_width * CELL_PX / (f.label.length * 0.7 + 1))}
+                  fontWeight="700"
+                  fill="#fff"
+                  textAnchor="middle"
+                >
+                  {f.label}
+                </SvgText>
+              </React.Fragment>
+            ))}
+
+            {/* Highlight anchor corner during feature placement */}
+            {featureCorner1 ? (
+              <Rect
+                x={featureCorner1.x * CELL_PX + 2}
+                y={featureCorner1.y * CELL_PX + 2}
+                width={CELL_PX - 4}
+                height={CELL_PX - 4}
+                fill="#2d5a27"
+                fillOpacity={0.5}
+                rx={4}
+              />
+            ) : null}
 
             {/* Front / Back orientation labels */}
             <SvgText
@@ -407,6 +515,13 @@ export default function MapScreen() {
               <Text style={styles.fabMenuIcon}>✏️</Text>
               <Text style={styles.fabMenuLabel}>Add Manually</Text>
             </Pressable>
+            <Pressable
+              style={[styles.fabMenuItem, { borderTopWidth: 1, borderTopColor: '#f0f0f0' }]}
+              onPress={() => handleFabAction('feature')}
+            >
+              <Text style={styles.fabMenuIcon}>🪨</Text>
+              <Text style={styles.fabMenuLabel}>Add Feature</Text>
+            </Pressable>
           </View>
         </>
       ) : null}
@@ -429,6 +544,17 @@ export default function MapScreen() {
           prefill={prefill}
           onClose={() => { setShowAddModal(false); setPrefill(undefined) }}
           onAdded={handlePlantAdded}
+        />
+      ) : null}
+
+      {showAddFeature ? (
+        <AddFeatureModal
+          onClose={() => setShowAddFeature(false)}
+          onConfirm={(type, label) => {
+            setShowAddFeature(false)
+            setPendingFeature({ type, label })
+            setFeatureCorner1(null)
+          }}
         />
       ) : null}
 
