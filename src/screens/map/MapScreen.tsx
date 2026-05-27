@@ -90,12 +90,14 @@ export default function MapScreen() {
   // Keep refs in sync for use inside gesture callbacks
   const placingPlantIdRef  = useRef<string | null>(null)
   const plantsRef          = useRef<Plant[]>([])
+  const featuresRef        = useRef<YardFeature[]>([])
   const yardRef            = useRef<Yard | null>(null)
   const pendingFeatureRef  = useRef<{ type: FeatureType; label: string } | null>(null)
   const featureCorner1Ref  = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => { placingPlantIdRef.current = placingPlantId }, [placingPlantId])
   useEffect(() => { plantsRef.current = plants }, [plants])
+  useEffect(() => { featuresRef.current = features }, [features])
   useEffect(() => { yardRef.current = yard }, [yard])
   useEffect(() => { pendingFeatureRef.current = pendingFeature }, [pendingFeature])
   useEffect(() => { featureCorner1Ref.current = featureCorner1 }, [featureCorner1])
@@ -197,7 +199,23 @@ export default function MapScreen() {
       return
     }
 
-    // Normal mode: tap a plant marker to view detail
+    // Normal mode: check feature tap first (features are larger targets)
+    const tappedFeature = featuresRef.current.find(f =>
+      gx >= f.grid_x && gx < f.grid_x + f.grid_width &&
+      gy >= f.grid_y && gy < f.grid_y + f.grid_height
+    )
+    if (tappedFeature) {
+      Alert.alert(tappedFeature.label, 'What would you like to do?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: () => deleteFeature(tappedFeature.id),
+        },
+      ])
+      return
+    }
+
+    // Tap a plant marker to view detail
     const tapped = plantsRef.current.find(p => {
       if (!p.placed || p.grid_x == null || p.grid_y == null) return false
       const mx = p.grid_x * CELL_PX + CELL_PX / 2
@@ -205,6 +223,12 @@ export default function MapScreen() {
       return Math.sqrt((canvasX - mx) ** 2 + (canvasY - my) ** 2) <= CELL_PX * 0.4
     })
     if (tapped) navigation.navigate('PlantDetail', { plantId: tapped.id })
+  }
+
+  async function deleteFeature(featureId: string) {
+    const { error } = await supabase.from('yard_features').delete().eq('id', featureId)
+    if (error) { Alert.alert('Error', error.message); return }
+    setFeatures(prev => prev.filter(f => f.id !== featureId))
   }
 
   async function placePlant(plantId: string, gridX: number, gridY: number) {
