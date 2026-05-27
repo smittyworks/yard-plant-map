@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "yard-plant-map",
-    "slug": "yard-plant-map",
+    "name": "Que Plante",
+    "slug": "que-plante",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,7 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "YardMap sends reminders when your plants need care."
+        "NSUserNotificationsUsageDescription": "Que Plante sends reminders when your plants need care."
       }
     },
     "android": {
