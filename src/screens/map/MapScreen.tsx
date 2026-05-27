@@ -13,8 +13,11 @@ import Svg, { Circle, Line, Rect } from 'react-native-svg'
 import { useNavigation } from '@react-navigation/native'
 import { supabase } from '../../lib/supabase'
 import { Plant, PlantIdentificationResult, PlantType, Yard } from '../../types'
+import { FREE_TIER_PLANT_LIMIT } from '../../constants'
 import AddPlantModal from '../plants/AddPlantModal'
 import IdentifyPlantScreen from '../plants/IdentifyPlantScreen'
+import PaywallScreen from '../paywall/PaywallScreen'
+import { usePremium } from '../../hooks/usePremium'
 
 const CELL_PX = 60
 
@@ -37,9 +40,12 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showIdentify, setShowIdentify] = useState(false)
+  const [showPaywall, setShowPaywall] = useState(false)
   const [fabExpanded, setFabExpanded] = useState(false)
   const [prefill, setPrefill] = useState<{ commonName?: string; botanicalName?: string } | undefined>()
   const [placingPlantId, setPlacingPlantId] = useState<string | null>(null)
+
+  const { atLimit, isPremium, plantCount, refresh: refreshPremium } = usePremium(yard?.id ?? null)
 
   // Pan using React Native's Animated
   const animPan = useRef(new Animated.ValueXY({ x: 20, y: 20 })).current
@@ -162,7 +168,15 @@ export default function MapScreen() {
   function handlePlantAdded(plant: Plant, placeNow: boolean) {
     setPlants(prev => [...prev, plant])
     setShowAddModal(false)
+    if (yard) refreshPremium(yard.id)
     if (placeNow) setPlacingPlantId(plant.id)
+  }
+
+  function handleFabAction(action: 'identify' | 'manual') {
+    setFabExpanded(false)
+    if (atLimit) { setShowPaywall(true); return }
+    if (action === 'identify') setShowIdentify(true)
+    else { setPrefill(undefined); setShowAddModal(true) }
   }
 
   // Build grid lines once per yard size change
@@ -285,20 +299,28 @@ export default function MapScreen() {
           <View style={styles.fabMenu}>
             <Pressable
               style={styles.fabMenuItem}
-              onPress={() => { setFabExpanded(false); setShowIdentify(true) }}
+              onPress={() => handleFabAction('identify')}
             >
               <Text style={styles.fabMenuIcon}>📷</Text>
               <Text style={styles.fabMenuLabel}>Identify with Camera</Text>
             </Pressable>
             <Pressable
               style={styles.fabMenuItem}
-              onPress={() => { setFabExpanded(false); setPrefill(undefined); setShowAddModal(true) }}
+              onPress={() => handleFabAction('manual')}
             >
               <Text style={styles.fabMenuIcon}>✏️</Text>
               <Text style={styles.fabMenuLabel}>Add Manually</Text>
             </Pressable>
           </View>
         </>
+      ) : null}
+
+      {!isPremium && !fabExpanded ? (
+        <Pressable style={styles.plantCounter} onPress={() => setShowPaywall(true)}>
+          <Text style={styles.plantCounterText}>
+            {Math.max(0, FREE_TIER_PLANT_LIMIT - plantCount)} plants left
+          </Text>
+        </Pressable>
       ) : null}
 
       <Pressable style={styles.fab} onPress={() => setFabExpanded(e => !e)}>
@@ -311,6 +333,13 @@ export default function MapScreen() {
           prefill={prefill}
           onClose={() => { setShowAddModal(false); setPrefill(undefined) }}
           onAdded={handlePlantAdded}
+        />
+      ) : null}
+
+      {showPaywall ? (
+        <PaywallScreen
+          onClose={() => setShowPaywall(false)}
+          onUnlocked={() => { setShowPaywall(false); if (yard) refreshPremium(yard.id) }}
         />
       ) : null}
 
@@ -366,6 +395,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 6, elevation: 6,
   },
   fabText:            { color: '#fff', fontSize: 32, lineHeight: 36, fontWeight: '300' },
+  plantCounter: {
+    position: 'absolute', bottom: 44, right: 84,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 12,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  plantCounterText:   { color: '#fff', fontSize: 12, fontWeight: '600' },
   fabTextOpen:        { transform: [{ rotate: '45deg' }] },
   fabOverlay:         { ...StyleSheet.absoluteFillObject, zIndex: 5 },
   fabMenu: {
