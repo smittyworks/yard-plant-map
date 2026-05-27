@@ -21,8 +21,8 @@ export default function SignInScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Yard Plant Map</Text>
-      <Text style={styles.subtitle}>Your yard, organized.</Text>
+      <Text style={styles.title}>Que Plante</Text>
+      <Text style={styles.subtitle}>Your yard, mapped.</Text>
 
       <TextInput
         style={styles.input}

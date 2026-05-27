@@ -74,7 +74,7 @@ export default function OnboardingScreen({ onYardCreated }: Props) {
 
       {step === 'name' && (
         <View style={styles.step}>
-          <Text style={styles.title}>Welcome to YardMap</Text>
+          <Text style={styles.title}>Welcome to Que Plante</Text>
           <Text style={styles.subtitle}>Let's set up your yard in a few quick steps.</Text>
           <Text style={styles.label}>What would you like to call your yard?</Text>
           <TextInput
