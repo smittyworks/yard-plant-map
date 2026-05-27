@@ -1,7 +1,7 @@
 import { PlantIdentificationResult } from '../types'
 import { PLANTNET_API_BASE } from '../constants'
 
-const API_KEY = process.env.PLANTNET_API_KEY
+const API_KEY = process.env.EXPO_PUBLIC_PLANTNET_API_KEY
 
 /**
  * Submit a photo to PlantNet for identification.
