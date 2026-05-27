@@ -89,6 +89,14 @@ export default function PlantDetailScreen() {
             Planted: {new Date(plant.date_planted).toLocaleDateString()}
           </Text>
         ) : null}
+        <Pressable
+          style={styles.moveBtn}
+          onPress={() => navigation.navigate('MapHome', { placePlantId: plant.id })}
+        >
+          <Text style={styles.moveBtnText}>
+            {plant.placed ? '📍 Move on Map' : '📍 Place on Map'}
+          </Text>
+        </Pressable>
       </View>
 
       {plant.notes ? (
@@ -144,7 +152,12 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 8,
   },
   typeBadgeText:   { color: '#fff', fontSize: 13, fontWeight: '600' },
-  datePlanted:     { fontSize: 13, color: '#888' },
+  datePlanted:     { fontSize: 13, color: '#888', marginBottom: 12 },
+  moveBtn: {
+    alignSelf: 'flex-start', borderWidth: 1.5, borderColor: '#2d5a27',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+  },
+  moveBtnText:     { color: '#2d5a27', fontSize: 14, fontWeight: '600' },
   section:         { marginBottom: 24 },
   sectionTitle:    { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 12 },
   notesBody:       { fontSize: 15, color: '#555', lineHeight: 22 },

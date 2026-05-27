@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native'
 import { PanGestureHandler, PinchGestureHandler, State } from 'react-native-gesture-handler'
-import Svg, { Circle, Line, Rect, Text as SvgText } from 'react-native-svg'
+import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { supabase } from '../../lib/supabase'
 import { Plant, PlantIdentificationResult, PlantType, Yard } from '../../types'
@@ -21,6 +21,18 @@ import { usePremium } from '../../hooks/usePremium'
 
 const CELL_PX = 60
 
+const PLANT_ICONS: Record<PlantType, string> = {
+  tree:         '🌳',
+  shrub:        '🌿',
+  perennial:    '🌸',
+  annual:       '🌼',
+  vine:         '🍃',
+  grass:        '🌾',
+  bulb:         '🌷',
+  other:        '🪴',
+}
+
+// Keep colors for the legend dots
 const PLANT_COLORS: Record<PlantType, string> = {
   tree:         '#1a5f1a',
   shrub:        '#3d8b37',
@@ -333,13 +345,15 @@ export default function MapScreen() {
             {plants
               .filter(p => p.placed && p.grid_x != null && p.grid_y != null)
               .map(p => (
-                <Circle
+                <SvgText
                   key={p.id}
-                  cx={p.grid_x! * CELL_PX + CELL_PX / 2}
-                  cy={p.grid_y! * CELL_PX + CELL_PX / 2}
-                  r={CELL_PX * 0.33}
-                  fill={PLANT_COLORS[p.plant_type]}
-                />
+                  x={p.grid_x! * CELL_PX + CELL_PX / 2}
+                  y={p.grid_y! * CELL_PX + CELL_PX / 2 + 9}
+                  fontSize={CELL_PX * 0.55}
+                  textAnchor="middle"
+                >
+                  {PLANT_ICONS[p.plant_type]}
+                </SvgText>
               ))
             }
 
