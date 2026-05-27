@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Animated,
+  Modal,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -11,8 +12,9 @@ import {
 import Svg, { Circle, Line, Rect } from 'react-native-svg'
 import { useNavigation } from '@react-navigation/native'
 import { supabase } from '../../lib/supabase'
-import { Plant, PlantType, Yard } from '../../types'
+import { Plant, PlantIdentificationResult, PlantType, Yard } from '../../types'
 import AddPlantModal from '../plants/AddPlantModal'
+import IdentifyPlantScreen from '../plants/IdentifyPlantScreen'
 
 const CELL_PX = 60
 
@@ -34,6 +36,9 @@ export default function MapScreen() {
   const [plants, setPlants] = useState<Plant[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showIdentify, setShowIdentify] = useState(false)
+  const [fabExpanded, setFabExpanded] = useState(false)
+  const [prefill, setPrefill] = useState<{ commonName?: string; botanicalName?: string } | undefined>()
   const [placingPlantId, setPlacingPlantId] = useState<string | null>(null)
 
   // Pan using React Native's Animated
@@ -273,17 +278,56 @@ export default function MapScreen() {
         })}
       </View>
 
-      <Pressable style={styles.fab} onPress={() => setShowAddModal(true)}>
-        <Text style={styles.fabText}>+</Text>
+      {/* FAB — tap to expand, shows two options */}
+      {fabExpanded ? (
+        <>
+          <Pressable style={styles.fabOverlay} onPress={() => setFabExpanded(false)} />
+          <View style={styles.fabMenu}>
+            <Pressable
+              style={styles.fabMenuItem}
+              onPress={() => { setFabExpanded(false); setShowIdentify(true) }}
+            >
+              <Text style={styles.fabMenuIcon}>📷</Text>
+              <Text style={styles.fabMenuLabel}>Identify with Camera</Text>
+            </Pressable>
+            <Pressable
+              style={styles.fabMenuItem}
+              onPress={() => { setFabExpanded(false); setPrefill(undefined); setShowAddModal(true) }}
+            >
+              <Text style={styles.fabMenuIcon}>✏️</Text>
+              <Text style={styles.fabMenuLabel}>Add Manually</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+
+      <Pressable style={styles.fab} onPress={() => setFabExpanded(e => !e)}>
+        <Text style={[styles.fabText, fabExpanded && styles.fabTextOpen]}>+</Text>
       </Pressable>
 
       {showAddModal ? (
         <AddPlantModal
           yardId={yard.id}
-          onClose={() => setShowAddModal(false)}
+          prefill={prefill}
+          onClose={() => { setShowAddModal(false); setPrefill(undefined) }}
           onAdded={handlePlantAdded}
         />
       ) : null}
+
+      <Modal visible={showIdentify} animationType="slide" onRequestClose={() => setShowIdentify(false)}>
+        <IdentifyPlantScreen
+          yardId={yard.id}
+          onCancel={() => setShowIdentify(false)}
+          onConfirm={(result: PlantIdentificationResult, _photoUri: string) => {
+            setShowIdentify(false)
+            setPrefill({
+              commonName: result.commonName || undefined,
+              botanicalName: result.botanicalName || undefined,
+            })
+            setShowAddModal(true)
+          }}
+        />
+      </Modal>
     </View>
   )
 }
@@ -322,4 +366,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 6, elevation: 6,
   },
   fabText:            { color: '#fff', fontSize: 32, lineHeight: 36, fontWeight: '300' },
+  fabTextOpen:        { transform: [{ rotate: '45deg' }] },
+  fabOverlay:         { ...StyleSheet.absoluteFillObject, zIndex: 5 },
+  fabMenu: {
+    position: 'absolute', bottom: 100, right: 16, zIndex: 6,
+    backgroundColor: '#fff', borderRadius: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15, shadowRadius: 8, elevation: 8,
+    overflow: 'hidden',
+  },
+  fabMenuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14, paddingHorizontal: 18,
+    borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
+  },
+  fabMenuIcon:        { fontSize: 20 },
+  fabMenuLabel:       { fontSize: 15, fontWeight: '600', color: '#1a1a1a' },
 })

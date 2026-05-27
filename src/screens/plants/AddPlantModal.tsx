@@ -21,11 +21,12 @@ interface Props {
   yardId: string
   onClose: () => void
   onAdded: (plant: Plant, placeNow: boolean) => void
+  prefill?: { commonName?: string; botanicalName?: string }
 }
 
-export default function AddPlantModal({ yardId, onClose, onAdded }: Props) {
-  const [commonName, setCommonName] = useState('')
-  const [botanicalName, setBotanicalName] = useState('')
+export default function AddPlantModal({ yardId, onClose, onAdded, prefill }: Props) {
+  const [commonName, setCommonName] = useState(prefill?.commonName ?? '')
+  const [botanicalName, setBotanicalName] = useState(prefill?.botanicalName ?? '')
   const [plantType, setPlantType] = useState<PlantType>('other')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
