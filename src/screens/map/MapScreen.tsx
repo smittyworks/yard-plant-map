@@ -3,14 +3,14 @@ import {
   Alert,
   Animated,
   Modal,
-  PanResponder,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
-import Svg, { Circle, Line, Rect } from 'react-native-svg'
-import { useNavigation } from '@react-navigation/native'
+import { PanGestureHandler, PinchGestureHandler, State } from 'react-native-gesture-handler'
+import Svg, { Circle, Line, Rect, Text as SvgText } from 'react-native-svg'
+import { useNavigation, useRoute } from '@react-navigation/native'
 import { supabase } from '../../lib/supabase'
 import { Plant, PlantIdentificationResult, PlantType, Yard } from '../../types'
 import { FREE_TIER_PLANT_LIMIT } from '../../constants'
@@ -34,6 +34,7 @@ const PLANT_COLORS: Record<PlantType, string> = {
 
 export default function MapScreen() {
   const navigation = useNavigation<any>()
+  const route = useRoute<any>()
 
   const [yard, setYard] = useState<Yard | null>(null)
   const [plants, setPlants] = useState<Plant[]>([])
@@ -47,18 +48,31 @@ export default function MapScreen() {
 
   const { atLimit, isPremium, plantCount, refresh: refreshPremium } = usePremium(yard?.id ?? null)
 
-  // Pan using React Native's Animated
-  const animPan = useRef(new Animated.ValueXY({ x: 20, y: 20 })).current
-  const panOffsetRef = useRef({ x: 20, y: 20 })
-  // gs.x0/y0 are page-level coords; subtract canvasArea's screen position to get canvas-relative coords
-  const canvasAreaRef = useRef<View>(null)
-  const canvasAreaPagePos = useRef({ x: 0, y: 0 })
-  const touchStartCanvasPos = useRef({ x: 0, y: 0 })
+  // Gesture handler refs for simultaneousHandlers
+  const panRef = useRef(null)
+  const pinchRef = useRef(null)
 
-  // Refs so PanResponder closures always read current values
+  // Pan
+  const translateX = useRef(new Animated.Value(20)).current
+  const translateY = useRef(new Animated.Value(20)).current
+  const panOffsetRef = useRef({ x: 20, y: 20 })
+
+  // Scale: totalScale = baseScale * pinchScale
+  // baseScale accumulates across gestures; pinchScale tracks the live gesture (starts at 1)
+  const baseScale  = useRef(new Animated.Value(1)).current
+  const pinchScale = useRef(new Animated.Value(1)).current
+  const totalScale = Animated.multiply(baseScale, pinchScale)
+  const currentScaleRef = useRef(1)
+
+  // Canvas area position for coordinate conversion
+  const canvasAreaRef = useRef<any>(null)
+  const canvasAreaPagePos = useRef({ x: 0, y: 0 })
+  const touchStartRef = useRef({ screenX: 0, screenY: 0 })
+
+  // Keep refs in sync for use inside gesture callbacks
   const placingPlantIdRef = useRef<string | null>(null)
-  const plantsRef = useRef<Plant[]>([])
-  const yardRef = useRef<Yard | null>(null)
+  const plantsRef         = useRef<Plant[]>([])
+  const yardRef           = useRef<Yard | null>(null)
 
   useEffect(() => { placingPlantIdRef.current = placingPlantId }, [placingPlantId])
   useEffect(() => { plantsRef.current = plants }, [plants])
@@ -70,44 +84,62 @@ export default function MapScreen() {
     })
   }
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+  // Pan gesture
+  const onPanEvent = Animated.event(
+    [{ nativeEvent: { translationX: translateX, translationY: translateY } }],
+    { useNativeDriver: false },
+  )
 
-      onPanResponderGrant: (_, gs) => {
-        // gs.x0/y0 are absolute page coordinates — subtract canvasArea's screen position
-        // to get a coordinate relative to canvasArea regardless of which child was touched
-        const relX = gs.x0 - canvasAreaPagePos.current.x
-        const relY = gs.y0 - canvasAreaPagePos.current.y
-        touchStartCanvasPos.current = {
-          x: relX - panOffsetRef.current.x,
-          y: relY - panOffsetRef.current.y,
-        }
-        animPan.setOffset(panOffsetRef.current)
-        animPan.setValue({ x: 0, y: 0 })
-      },
+  function onPanStateChange(e: any) {
+    const { state, translationX: tx, translationY: ty, absoluteX, absoluteY } = e.nativeEvent
+    if (state === State.BEGAN) {
+      translateX.setOffset(panOffsetRef.current.x)
+      translateY.setOffset(panOffsetRef.current.y)
+      translateX.setValue(0)
+      translateY.setValue(0)
+      touchStartRef.current = { screenX: absoluteX, screenY: absoluteY }
+    }
+    if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
+      panOffsetRef.current = {
+        x: panOffsetRef.current.x + tx,
+        y: panOffsetRef.current.y + ty,
+      }
+      translateX.flattenOffset()
+      translateY.flattenOffset()
 
-      onPanResponderMove: Animated.event(
-        [null, { dx: animPan.x, dy: animPan.y }],
-        { useNativeDriver: false },
-      ),
+      if (Math.abs(tx) < 8 && Math.abs(ty) < 8) {
+        // Tap: convert screen → canvas coordinates accounting for translate + scale
+        const currentYard = yardRef.current
+        if (!currentYard) return
+        const sx = touchStartRef.current.screenX - canvasAreaPagePos.current.x
+        const sy = touchStartRef.current.screenY - canvasAreaPagePos.current.y
+        const s  = currentScaleRef.current
+        const cw = currentYard.grid_width  * CELL_PX
+        const ch = currentYard.grid_height * CELL_PX
+        // RN scales around element center, so:
+        // screen = translate + center + (local - center) * scale
+        // local  = (screen - translate - center) / scale + center
+        const canvasX = (sx - panOffsetRef.current.x - cw / 2) / s + cw / 2
+        const canvasY = (sy - panOffsetRef.current.y - ch / 2) / s + ch / 2
+        handleCanvasTap(canvasX, canvasY)
+      }
+    }
+  }
 
-      onPanResponderRelease: (_, gs) => {
-        panOffsetRef.current = {
-          x: panOffsetRef.current.x + gs.dx,
-          y: panOffsetRef.current.y + gs.dy,
-        }
-        animPan.flattenOffset()
+  // Pinch gesture
+  const onPinchEvent = Animated.event(
+    [{ nativeEvent: { scale: pinchScale } }],
+    { useNativeDriver: false },
+  )
 
-        if (Math.abs(gs.dx) < 6 && Math.abs(gs.dy) < 6) {
-          handleCanvasTap(
-            touchStartCanvasPos.current.x,
-            touchStartCanvasPos.current.y,
-          )
-        }
-      },
-    })
-  ).current
+  function onPinchStateChange(e: any) {
+    if (e.nativeEvent.oldState === State.ACTIVE) {
+      const next = Math.max(0.4, Math.min(3, currentScaleRef.current * e.nativeEvent.scale))
+      currentScaleRef.current = next
+      baseScale.setValue(next)
+      pinchScale.setValue(1)
+    }
+  }
 
   function handleCanvasTap(canvasX: number, canvasY: number) {
     const currentYard = yardRef.current
@@ -146,6 +178,16 @@ export default function MapScreen() {
   }
 
   useEffect(() => { loadData() }, [])
+
+  // Enter placement mode when navigated here with a placePlantId param
+  useEffect(() => {
+    const plantId = route.params?.placePlantId
+    if (plantId) {
+      setPlacingPlantId(plantId)
+      // Clear the param so re-focusing doesn't re-trigger
+      navigation.setParams({ placePlantId: undefined })
+    }
+  }, [route.params?.placePlantId])
 
   async function loadData() {
     try {
@@ -221,18 +263,36 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <View
-        ref={canvasAreaRef}
-        style={styles.canvasArea}
-        onLayout={onCanvasAreaLayout}
-        {...panResponder.panHandlers}
+      <PinchGestureHandler
+        ref={pinchRef}
+        onGestureEvent={onPinchEvent}
+        onHandlerStateChange={onPinchStateChange}
+        simultaneousHandlers={panRef}
       >
+        <Animated.View style={styles.canvasArea}>
+          <PanGestureHandler
+            ref={panRef}
+            onGestureEvent={onPanEvent}
+            onHandlerStateChange={onPanStateChange}
+            simultaneousHandlers={pinchRef}
+            minPointers={1}
+            maxPointers={2}
+          >
+            <Animated.View
+              ref={canvasAreaRef}
+              style={styles.canvasArea}
+              onLayout={onCanvasAreaLayout}
+            >
         <Animated.View
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
-            transform: [{ translateX: animPan.x }, { translateY: animPan.y }],
+            transform: [
+              { translateX },
+              { translateY },
+              { scale: totalScale },
+            ],
           }}
         >
           <Svg width={canvasWidth} height={canvasHeight}>
@@ -253,6 +313,22 @@ export default function MapScreen() {
             <Rect x={1} y={1} width={canvasWidth - 2} height={canvasHeight - 2}
               fill="none" stroke="#4a7c40" strokeWidth={2} />
 
+            {/* Front / Back orientation labels */}
+            <SvgText
+              x={canvasWidth / 2} y={canvasHeight - 8}
+              fontSize={13} fontWeight="600" fill="#4a7c40"
+              textAnchor="middle"
+            >
+              ▲ Front
+            </SvgText>
+            <SvgText
+              x={canvasWidth / 2} y={20}
+              fontSize={13} fontWeight="600" fill="#4a7c40"
+              textAnchor="middle"
+            >
+              Back ▼
+            </SvgText>
+
             {/* Plant markers */}
             {plants
               .filter(p => p.placed && p.grid_x != null && p.grid_y != null)
@@ -266,9 +342,13 @@ export default function MapScreen() {
                 />
               ))
             }
+
           </Svg>
         </Animated.View>
-      </View>
+            </Animated.View>
+          </PanGestureHandler>
+        </Animated.View>
+      </PinchGestureHandler>
 
       {unplacedCount > 0 ? (
         <Pressable
@@ -279,18 +359,20 @@ export default function MapScreen() {
         </Pressable>
       ) : null}
 
-      {/* Legend — only show types that have placed plants */}
-      <View style={styles.legend}>
-        {(Object.entries(PLANT_COLORS) as [PlantType, string][]).map(([type, color]) => {
-          if (!plants.some(p => p.plant_type === type && p.placed)) return null
-          return (
-            <View key={type} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: color }]} />
-              <Text style={styles.legendLabel}>{type}</Text>
-            </View>
-          )
-        })}
-      </View>
+      {/* Legend */}
+      {plants.some(p => p.placed) ? (
+        <View style={styles.legend}>
+          {(Object.entries(PLANT_COLORS) as [PlantType, string][]).map(([type, color]) => {
+            if (!plants.some(p => p.plant_type === type && p.placed)) return null
+            return (
+              <View key={type} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: color }]} />
+                <Text style={styles.legendLabel}>{type}</Text>
+              </View>
+            )
+          })}
+        </View>
+      ) : null}
 
       {/* FAB — tap to expand, shows two options */}
       {fabExpanded ? (
@@ -380,13 +462,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
   },
   unplacedBadgeText:  { color: '#fff', fontWeight: '700', fontSize: 13 },
-  legend: {
-    position: 'absolute', bottom: 100, left: 12,
-    flexDirection: 'row', flexWrap: 'wrap', gap: 6, maxWidth: 180,
-  },
-  legendItem:         { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot:          { width: 8, height: 8, borderRadius: 4 },
-  legendLabel:        { fontSize: 11, color: '#333', fontWeight: '500' },
   fab: {
     position: 'absolute', bottom: 32, right: 20,
     width: 56, height: 56, borderRadius: 28,
@@ -394,6 +469,15 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3, shadowRadius: 6, elevation: 6,
   },
+  legend: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderTopWidth: 1, borderTopColor: '#dde8d8',
+  },
+  legendItem:         { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot:          { width: 9, height: 9, borderRadius: 5 },
+  legendLabel:        { fontSize: 12, color: '#444', fontWeight: '500', textTransform: 'capitalize' },
   fabText:            { color: '#fff', fontSize: 32, lineHeight: 36, fontWeight: '300' },
   plantCounter: {
     position: 'absolute', bottom: 44, right: 84,
