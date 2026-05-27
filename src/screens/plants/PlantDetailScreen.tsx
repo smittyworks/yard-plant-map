@@ -11,6 +11,7 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native'
 import { supabase } from '../../lib/supabase'
 import { Plant, CareEvent, CareEventType } from '../../types'
+import EditPlantModal from './EditPlantModal'
 
 const CARE_TYPES: CareEventType[] = ['watering', 'fertilizing', 'pruning', 'treatment', 'transplanting', 'other']
 
@@ -31,10 +32,23 @@ export default function PlantDetailScreen() {
   const [plant, setPlant] = useState<Plant | null>(null)
   const [careEvents, setCareEvents] = useState<CareEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [showEdit, setShowEdit] = useState(false)
 
   useEffect(() => {
     loadData()
   }, [plantId])
+
+  useEffect(() => {
+    if (!plant) return
+    navigation.setOptions({
+      title: plant.common_name,
+      headerRight: () => (
+        <Pressable onPress={() => setShowEdit(true)} hitSlop={12} style={{ marginRight: 4 }}>
+          <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>Edit</Text>
+        </Pressable>
+      ),
+    })
+  }, [plant])
 
   async function loadData() {
     const [{ data: plantData }, { data: events }] = await Promise.all([
@@ -46,10 +60,7 @@ export default function PlantDetailScreen() {
         .order('occurred_at', { ascending: false })
         .limit(20),
     ])
-    if (plantData) {
-      setPlant(plantData)
-      navigation.setOptions({ title: plantData.common_name })
-    }
+    if (plantData) setPlant(plantData)
     setCareEvents(events ?? [])
     setLoading(false)
   }
@@ -135,6 +146,17 @@ export default function PlantDetailScreen() {
           ))}
         </View>
       ) : null}
+
+      {showEdit && plant && (
+        <EditPlantModal
+          plant={plant}
+          onClose={() => setShowEdit(false)}
+          onSaved={(updated) => {
+            setPlant(updated)
+            setShowEdit(false)
+          }}
+        />
+      )}
     </ScrollView>
   )
 }
