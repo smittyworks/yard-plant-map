@@ -66,23 +66,26 @@ export default function UnplacedPlantsScreen() {
       keyExtractor={p => p.id}
       contentContainerStyle={{ paddingVertical: 12 }}
       renderItem={({ item }) => (
-        <Pressable
-          style={styles.row}
-          onPress={() => navigation.navigate('PlantDetail', { plantId: item.id })}
-        >
-          <View style={styles.rowLeft}>
+        <View style={styles.row}>
+          <Pressable
+            style={styles.rowLeft}
+            onPress={() => navigation.navigate('PlantDetail', { plantId: item.id })}
+          >
             <Text style={styles.plantName}>{item.common_name}</Text>
             {item.botanical_name ? (
               <Text style={styles.botanicalName}>{item.botanical_name}</Text>
             ) : null}
-          </View>
-          <View style={styles.rowRight}>
             <View style={styles.typePill}>
               <Text style={styles.typePillText}>{item.plant_type}</Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
-          </View>
-        </Pressable>
+          </Pressable>
+          <Pressable
+            style={styles.placeBtn}
+            onPress={() => navigation.navigate('MapHome', { placePlantId: item.id })}
+          >
+            <Text style={styles.placeBtnText}>Place{'\n'}on Map</Text>
+          </Pressable>
+        </View>
       )}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
     />
@@ -99,19 +102,22 @@ const styles = StyleSheet.create({
   backBtnText:     { color: '#2d5a27', fontWeight: '600', fontSize: 15 },
   list:            { flex: 1, backgroundColor: '#f8f5f0' },
   row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fff', paddingHorizontal: 20, paddingVertical: 14, marginHorizontal: 16,
-    borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', paddingLeft: 20, paddingRight: 12, paddingVertical: 14,
+    marginHorizontal: 16, borderRadius: 12,
   },
   rowLeft:         { flex: 1, marginRight: 12 },
-  plantName:       { fontSize: 16, fontWeight: '600', color: '#1a1a1a' },
-  botanicalName:   { fontSize: 13, color: '#888', fontStyle: 'italic', marginTop: 2 },
-  rowRight:        { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  plantName:       { fontSize: 16, fontWeight: '600', color: '#1a1a1a', marginBottom: 2 },
+  botanicalName:   { fontSize: 13, color: '#888', fontStyle: 'italic', marginBottom: 6 },
   typePill: {
-    backgroundColor: '#e8f5e2', borderRadius: 10,
+    alignSelf: 'flex-start', backgroundColor: '#e8f5e2', borderRadius: 10,
     paddingHorizontal: 8, paddingVertical: 3,
   },
   typePillText:    { fontSize: 12, color: '#2d5a27', fontWeight: '600' },
-  chevron:         { fontSize: 22, color: '#ccc' },
+  placeBtn: {
+    backgroundColor: '#2d5a27', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center',
+  },
+  placeBtnText:    { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 16 },
   separator:       { height: 8 },
 })
