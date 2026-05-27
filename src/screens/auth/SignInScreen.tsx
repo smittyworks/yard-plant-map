@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { supabase } from '../../lib/supabase'
 
 export default function SignInScreen() {
@@ -21,6 +21,7 @@ export default function SignInScreen() {
 
   return (
     <View style={styles.container}>
+      <Image source={require('../../../assets/icon.png')} style={styles.logo} />
       <Text style={styles.title}>Que Plante</Text>
       <Text style={styles.subtitle}>Your yard, mapped.</Text>
 
@@ -55,6 +56,7 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff' },
+  logo:      { width: 100, height: 100, borderRadius: 22, alignSelf: 'center', marginBottom: 16 },
   title:     { fontSize: 28, fontWeight: '700', textAlign: 'center', marginBottom: 8, color: '#2d5a27' },
   subtitle:  { fontSize: 16, textAlign: 'center', marginBottom: 40, color: '#666' },
   input:     { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16 },

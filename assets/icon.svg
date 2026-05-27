@@ -1,0 +1,53 @@
+<svg width="1024" height="1024" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#f8f5f0"/>
+
+  <!-- Grid lines -->
+  <g stroke="#c8dfc6" stroke-width="1.5">
+    <line x1="30" y1="30" x2="170" y2="30"/>
+    <line x1="30" y1="57" x2="170" y2="57"/>
+    <line x1="30" y1="84" x2="170" y2="84"/>
+    <line x1="30" y1="111" x2="170" y2="111"/>
+    <line x1="30" y1="138" x2="170" y2="138"/>
+    <line x1="30" y1="165" x2="170" y2="165"/>
+    <line x1="30"  y1="30" x2="30"  y2="170"/>
+    <line x1="57"  y1="30" x2="57"  y2="170"/>
+    <line x1="84"  y1="30" x2="84"  y2="170"/>
+    <line x1="111" y1="30" x2="111" y2="170"/>
+    <line x1="138" y1="30" x2="138" y2="170"/>
+    <line x1="165" y1="30" x2="165" y2="170"/>
+  </g>
+
+  <!-- Yard border -->
+  <rect x="30" y="30" width="140" height="140" fill="none" stroke="#2d5a27" stroke-width="2.5" rx="3"/>
+
+  <!-- Stem -->
+  <line x1="100" y1="162" x2="100" y2="108" stroke="#3d7238" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Left leaf -->
+  <path d="M100 140 C84 124 66 128 64 116 C76 108 96 124 100 140 Z" fill="#4a8c44"/>
+  <!-- Right leaf -->
+  <path d="M100 126 C116 110 136 114 138 102 C124 96 104 112 100 126 Z" fill="#3d7238"/>
+
+  <!-- Tulip left petal -->
+  <path d="M100 108
+           C88 108 70 95 72 65
+           C74 43 89 33 100 32
+           C100 32 88 68 100 108 Z"
+        fill="#7c3aed"/>
+
+  <!-- Tulip right petal -->
+  <path d="M100 108
+           C112 108 130 95 128 65
+           C126 43 111 33 100 32
+           C100 32 112 68 100 108 Z"
+        fill="#6d28d9"/>
+
+  <!-- Tulip center petal -->
+  <path d="M100 108 C93 88 91 58 100 32 C109 58 107 88 100 108 Z"
+        fill="#8b5cf6"/>
+
+  <!-- Highlight shimmer on center petal -->
+  <path d="M100 62 C97 52 96 43 100 36 C102 43 103 52 100 62 Z"
+        fill="#c4b5fd" opacity="0.65"/>
+</svg>

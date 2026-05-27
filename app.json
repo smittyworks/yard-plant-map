@@ -9,8 +9,10 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "Que Plante sends reminders when your plants need care."
-      }
+        "NSUserNotificationsUsageDescription": "Que Plante sends reminders when your plants need care.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.smittyworks.queplante"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,6 +25,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a4238f07-0d1a-4c43-894a-d6d19b7fcea4"
+      }
+    },
+    "owner": "smiiith"
   }
 }

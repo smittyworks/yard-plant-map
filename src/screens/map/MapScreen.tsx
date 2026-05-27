@@ -4,6 +4,7 @@ import {
   Animated,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,6 +17,7 @@ import { Plant, PlantIdentificationResult, PlantType, Yard, YardFeature, Feature
 import { FREE_TIER_PLANT_LIMIT } from '../../constants'
 import AddPlantModal from '../plants/AddPlantModal'
 import AddFeatureModal from './AddFeatureModal'
+import AddYardModal from './AddYardModal'
 import IdentifyPlantScreen from '../plants/IdentifyPlantScreen'
 import PaywallScreen from '../paywall/PaywallScreen'
 import { usePremium } from '../../hooks/usePremium'
@@ -49,12 +51,15 @@ export default function MapScreen() {
   const navigation = useNavigation<any>()
   const route = useRoute<any>()
 
-  const [yard, setYard] = useState<Yard | null>(null)
+  const [yards, setYards] = useState<Yard[]>([])
+  const [selectedYardId, setSelectedYardId] = useState<string | null>(null)
+  const yard = yards.find(y => y.id === selectedYardId) ?? null
   const [plants, setPlants] = useState<Plant[]>([])
   const [loading, setLoading] = useState(true)
   const [features, setFeatures] = useState<YardFeature[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [showAddFeature, setShowAddFeature] = useState(false)
+  const [showAddYard, setShowAddYard] = useState(false)
   const [showIdentify, setShowIdentify] = useState(false)
   const [showPaywall, setShowPaywall] = useState(false)
   const [fabExpanded, setFabExpanded] = useState(false)
@@ -270,7 +275,11 @@ export default function MapScreen() {
     setFeatureCorner1(null)
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadYards() }, [])
+
+  useEffect(() => {
+    if (selectedYardId) loadYardData(selectedYardId)
+  }, [selectedYardId])
 
   // Enter placement mode when navigated here with a placePlantId param
   useEffect(() => {
@@ -282,25 +291,27 @@ export default function MapScreen() {
     }
   }, [route.params?.placePlantId])
 
-  async function loadData() {
+  async function loadYards() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
-      const { data: yardData } = await supabase
-        .from('yards').select('*').eq('user_id', user.id).maybeSingle()
-      if (!yardData) return
-
-      setYard(yardData)
-      const [{ data: plantsData }, { data: featuresData }] = await Promise.all([
-        supabase.from('plants').select('*').eq('yard_id', yardData.id).order('created_at'),
-        supabase.from('yard_features').select('*').eq('yard_id', yardData.id),
-      ])
-      setPlants(plantsData ?? [])
-      setFeatures(featuresData ?? [])
+      const { data: yardsData } = await supabase
+        .from('yards').select('*').eq('user_id', user.id).order('created_at')
+      if (!yardsData?.length) return
+      setYards(yardsData)
+      setSelectedYardId(yardsData[0].id)
     } finally {
       setLoading(false)
     }
+  }
+
+  async function loadYardData(yardId: string) {
+    const [{ data: plantsData }, { data: featuresData }] = await Promise.all([
+      supabase.from('plants').select('*').eq('yard_id', yardId).order('created_at'),
+      supabase.from('yard_features').select('*').eq('yard_id', yardId),
+    ])
+    setPlants(plantsData ?? [])
+    setFeatures(featuresData ?? [])
   }
 
   function handlePlantAdded(plant: Plant, placeNow: boolean) {
@@ -349,8 +360,62 @@ export default function MapScreen() {
   const canvasWidth  = yard.grid_width  * CELL_PX
   const canvasHeight = yard.grid_height * CELL_PX
 
+  function handleYardCreated(newYard: Yard) {
+    setYards(prev => [...prev, newYard])
+    setSelectedYardId(newYard.id)
+    setShowAddYard(false)
+  }
+
+  function handleYardLongPress(y: Yard) {
+    if (yards.length <= 1) {
+      Alert.alert('Cannot Delete', 'You need at least one yard.')
+      return
+    }
+    Alert.alert(
+      `Delete "${y.name}"?`,
+      'This will permanently delete this yard and all its plants.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: () => deleteYard(y.id),
+        },
+      ],
+    )
+  }
+
+  async function deleteYard(yardId: string) {
+    const { error } = await supabase.from('yards').delete().eq('id', yardId)
+    if (error) { Alert.alert('Error', error.message); return }
+    const remaining = yards.filter(y => y.id !== yardId)
+    setYards(remaining)
+    if (selectedYardId === yardId) setSelectedYardId(remaining[0]?.id ?? null)
+  }
+
   return (
     <View style={styles.container}>
+      {/* Yard switcher */}
+      <View style={styles.yardSwitcher}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yardSwitcherContent}>
+          {yards.map(y => (
+            <Pressable
+              key={y.id}
+              style={[styles.yardTab, selectedYardId === y.id && styles.yardTabActive]}
+              onPress={() => setSelectedYardId(y.id)}
+              onLongPress={() => handleYardLongPress(y)}
+              delayLongPress={500}
+            >
+              <Text style={[styles.yardTabText, selectedYardId === y.id && styles.yardTabTextActive]}>
+                {y.name}
+              </Text>
+            </Pressable>
+          ))}
+          <Pressable style={styles.yardAddBtn} onPress={() => setShowAddYard(true)}>
+            <Text style={styles.yardAddBtnText}>+ New</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+
       {placingPlantId ? (
         <View style={styles.placingBanner}>
           <Text style={styles.placingText}>Tap a cell to place your plant</Text>
@@ -589,6 +654,13 @@ export default function MapScreen() {
         />
       ) : null}
 
+      {showAddYard ? (
+        <AddYardModal
+          onClose={() => setShowAddYard(false)}
+          onCreated={handleYardCreated}
+        />
+      ) : null}
+
       <Modal visible={showIdentify} animationType="slide" onRequestClose={() => setShowIdentify(false)}>
         <IdentifyPlantScreen
           yardId={yard.id}
@@ -609,6 +681,20 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
   container:          { flex: 1, backgroundColor: '#d6e8d0' },
+  yardSwitcher:       { backgroundColor: '#2d5a27', paddingVertical: 8 },
+  yardSwitcherContent:{ paddingHorizontal: 12, gap: 8, flexDirection: 'row', alignItems: 'center' },
+  yardTab: {
+    paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  yardTabActive:      { backgroundColor: '#fff' },
+  yardTabText:        { color: 'rgba(255,255,255,0.85)', fontWeight: '600', fontSize: 13 },
+  yardTabTextActive:  { color: '#2d5a27' },
+  yardAddBtn: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)',
+  },
+  yardAddBtnText:     { color: '#fff', fontWeight: '600', fontSize: 13 },
   centered:           { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f5f0' },
   hint:               { fontSize: 16, color: '#888' },
   placingBanner: {
