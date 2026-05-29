@@ -65,6 +65,7 @@ export default function MapScreen() {
   const [fabExpanded, setFabExpanded] = useState(false)
   const [prefill, setPrefill] = useState<{ commonName?: string; botanicalName?: string } | undefined>()
   const [placingPlantId, setPlacingPlantId] = useState<string | null>(null)
+  const [plantCorner1, setPlantCorner1] = useState<{ x: number; y: number } | null>(null)
   // Feature placement: two-tap mode (corner1 → corner2)
   const [pendingFeature, setPendingFeature] = useState<{ type: FeatureType; label: string } | null>(null)
   const [featureCorner1, setFeatureCorner1] = useState<{ x: number; y: number } | null>(null)
@@ -94,6 +95,7 @@ export default function MapScreen() {
 
   // Keep refs in sync for use inside gesture callbacks
   const placingPlantIdRef  = useRef<string | null>(null)
+  const plantCorner1Ref    = useRef<{ x: number; y: number } | null>(null)
   const plantsRef          = useRef<Plant[]>([])
   const featuresRef        = useRef<YardFeature[]>([])
   const yardRef            = useRef<Yard | null>(null)
@@ -101,6 +103,7 @@ export default function MapScreen() {
   const featureCorner1Ref  = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => { placingPlantIdRef.current = placingPlantId }, [placingPlantId])
+  useEffect(() => { plantCorner1Ref.current = plantCorner1 }, [plantCorner1])
   useEffect(() => { plantsRef.current = plants }, [plants])
   useEffect(() => { featuresRef.current = features }, [features])
   useEffect(() => { yardRef.current = yard }, [yard])
@@ -178,10 +181,21 @@ export default function MapScreen() {
     const gy = Math.floor(canvasY / CELL_PX)
     const inBounds = gx >= 0 && gx < currentYard.grid_width && gy >= 0 && gy < currentYard.grid_height
 
-    // Plant placement mode
+    // Plant placement mode — two taps (corner1 → corner2)
     const pId = placingPlantIdRef.current
     if (pId) {
-      if (inBounds) placePlant(pId, gx, gy)
+      if (!inBounds) return
+      if (!plantCorner1Ref.current) {
+        setPlantCorner1({ x: gx, y: gy })
+        plantCorner1Ref.current = { x: gx, y: gy }
+      } else {
+        const c1 = plantCorner1Ref.current
+        const x = Math.min(c1.x, gx)
+        const y = Math.min(c1.y, gy)
+        const w = Math.abs(gx - c1.x) + 1
+        const h = Math.abs(gy - c1.y) + 1
+        placePlant(pId, x, y, w, h)
+      }
       return
     }
 
@@ -223,9 +237,12 @@ export default function MapScreen() {
     // Tap a plant marker to view detail
     const tapped = plantsRef.current.find(p => {
       if (!p.placed || p.grid_x == null || p.grid_y == null) return false
-      const mx = p.grid_x * CELL_PX + CELL_PX / 2
-      const my = p.grid_y * CELL_PX + CELL_PX / 2
-      return Math.sqrt((canvasX - mx) ** 2 + (canvasY - my) ** 2) <= CELL_PX * 0.4
+      const w = (p.grid_width ?? 1)
+      const h = (p.grid_height ?? 1)
+      return (
+        gx >= p.grid_x && gx < p.grid_x + w &&
+        gy >= p.grid_y && gy < p.grid_y + h
+      )
     })
     if (tapped) navigation.navigate('PlantDetail', { plantId: tapped.id })
   }
@@ -236,10 +253,10 @@ export default function MapScreen() {
     setFeatures(prev => prev.filter(f => f.id !== featureId))
   }
 
-  async function placePlant(plantId: string, gridX: number, gridY: number) {
+  async function placePlant(plantId: string, gridX: number, gridY: number, gridW: number, gridH: number) {
     const { data: updated, error } = await supabase
       .from('plants')
-      .update({ grid_x: gridX, grid_y: gridY, placed: true })
+      .update({ grid_x: gridX, grid_y: gridY, grid_width: gridW, grid_height: gridH, placed: true })
       .eq('id', plantId)
       .select()
       .single()
@@ -247,6 +264,7 @@ export default function MapScreen() {
     if (error) { Alert.alert('Error', error.message); return }
     setPlants(prev => prev.map(p => p.id === plantId ? updated : p))
     setPlacingPlantId(null)
+    setPlantCorner1(null)
   }
 
   async function saveFeature(
@@ -286,6 +304,7 @@ export default function MapScreen() {
     const plantId = route.params?.placePlantId
     if (plantId) {
       setPlacingPlantId(plantId)
+      setPlantCorner1(null)
       // Clear the param so re-focusing doesn't re-trigger
       navigation.setParams({ placePlantId: undefined })
     }
@@ -418,8 +437,10 @@ export default function MapScreen() {
 
       {placingPlantId ? (
         <View style={styles.placingBanner}>
-          <Text style={styles.placingText}>Tap a cell to place your plant</Text>
-          <Pressable onPress={() => setPlacingPlantId(null)} hitSlop={12}>
+          <Text style={styles.placingText}>
+            {plantCorner1 ? 'Tap bottom-right corner' : 'Tap top-left corner'}
+          </Text>
+          <Pressable onPress={() => { setPlacingPlantId(null); setPlantCorner1(null) }} hitSlop={12}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
         </View>
@@ -538,20 +559,55 @@ export default function MapScreen() {
               Back ▼
             </SvgText>
 
+            {/* Highlight anchor corner during plant placement */}
+            {plantCorner1 ? (
+              <Rect
+                x={plantCorner1.x * CELL_PX + 2}
+                y={plantCorner1.y * CELL_PX + 2}
+                width={CELL_PX - 4}
+                height={CELL_PX - 4}
+                fill={PLANT_COLORS['other']}
+                fillOpacity={0.5}
+                rx={4}
+              />
+            ) : null}
+
             {/* Plant markers */}
             {plants
               .filter(p => p.placed && p.grid_x != null && p.grid_y != null)
-              .map(p => (
-                <SvgText
-                  key={p.id}
-                  x={p.grid_x! * CELL_PX + CELL_PX / 2}
-                  y={p.grid_y! * CELL_PX + CELL_PX / 2 + 9}
-                  fontSize={CELL_PX * 0.55}
-                  textAnchor="middle"
-                >
-                  {PLANT_ICONS[p.plant_type]}
-                </SvgText>
-              ))
+              .map(p => {
+                const w = (p.grid_width ?? 1) * CELL_PX
+                const h = (p.grid_height ?? 1) * CELL_PX
+                const cx = p.grid_x! * CELL_PX + w / 2
+                const cy = p.grid_y! * CELL_PX + h / 2
+                const fontSize = Math.min(CELL_PX * 0.55, Math.min(w, h) * 0.55)
+                return (
+                  <React.Fragment key={p.id}>
+                    <Rect
+                      x={p.grid_x! * CELL_PX + 2}
+                      y={p.grid_y! * CELL_PX + 2}
+                      width={w - 4}
+                      height={h - 4}
+                      fill={PLANT_COLORS[p.plant_type]}
+                      fillOpacity={0.35}
+                      rx={6}
+                    />
+                    {Array.from({ length: p.grid_width ?? 1 }, (_, col) =>
+                      Array.from({ length: p.grid_height ?? 1 }, (_, row) => (
+                        <SvgText
+                          key={`${col}-${row}`}
+                          x={p.grid_x! * CELL_PX + col * CELL_PX + CELL_PX / 2}
+                          y={p.grid_y! * CELL_PX + row * CELL_PX + CELL_PX / 2 + fontSize * 0.35}
+                          fontSize={fontSize}
+                          textAnchor="middle"
+                        >
+                          {PLANT_ICONS[p.plant_type]}
+                        </SvgText>
+                      ))
+                    )}
+                  </React.Fragment>
+                )
+              })
             }
 
           </Svg>

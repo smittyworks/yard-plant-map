@@ -63,6 +63,8 @@ export interface Plant {
   plant_type: PlantType
   grid_x: number | null
   grid_y: number | null
+  grid_width: number
+  grid_height: number
   placed: boolean
   date_planted: string | null
   notes: string | null

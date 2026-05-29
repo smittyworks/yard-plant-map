@@ -111,6 +111,8 @@ export type Database = {
           date_planted: string | null
           grid_x: number | null
           grid_y: number | null
+          grid_width: number
+          grid_height: number
           id: string
           notes: string | null
           placed: boolean
@@ -124,6 +126,8 @@ export type Database = {
           date_planted?: string | null
           grid_x?: number | null
           grid_y?: number | null
+          grid_width?: number
+          grid_height?: number
           id?: string
           notes?: string | null
           placed?: boolean
@@ -137,6 +141,8 @@ export type Database = {
           date_planted?: string | null
           grid_x?: number | null
           grid_y?: number | null
+          grid_width?: number
+          grid_height?: number
           id?: string
           notes?: string | null
           placed?: boolean
